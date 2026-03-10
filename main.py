@@ -1,40 +1,31 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 st.set_page_config(page_title="NR Breakout Scanner", layout="wide")
 
-st.title("📈 NR4 / NR7 Breakout Scanner")
+st.title("📈 NR4 / NR5 / NR6 / NR7 Breakout Scanner")
 
-# -----------------------
-# Paste NSE symbols here
-# -----------------------
+# ---------------------------------
+# Load ALL NSE Stocks Automatically
+# ---------------------------------
 
-raw_symbols = """
-NSE:3IINFOTECH,NSE:3MINDIA,NSE:3RDROCK,NSE:5PAISA,NSE:63MOONS,NSE:AARTIDRUGS,
-NSE:AARTIIND,NSE:AAVAS,NSE:ABB,NSE:ABCAPITAL,NSE:ABFRL,NSE:ACC,NSE:ACCELYA,
-NSE:ACE,NSE:ADANIENT,NSE:ADANIGREEN,NSE:ADANIPORTS,NSE:ADANIPOWER,NSE:ADANITRANS,
-NSE:ADFFOODS,NSE:ADORWELD,NSE:ADVANIHOTR,NSE:ADVENZYMES,NSE:AEGISCHEM,NSE:AFFLE,
-NSE:AHLUCONT,NSE:AIAENG,NSE:AJANTPHARM,NSE:AJMERA,NSE:AKZOINDIA,NSE:ALANKIT,
-NSE:ALBERTDAVD,NSE:ALEMBICLTD,NSE:ALKEM,NSE:ALKYLAMINE,NSE:ALLCARGO,NSE:ALOKINDS,
-NSE:AMARAJABAT,NSE:AMBER,NSE:AMBUJACEM,NSE:ANANTRAJ,NSE:APARINDS,NSE:APLAPOLLO,
-NSE:APOLLOHOSP,NSE:APOLLOTYRE,NSE:ASHOKLEY,NSE:ASIANPAINT,NSE:ASTRAL,NSE:ATUL,
-NSE:AUBANK,NSE:AUROPHARMA,NSE:AXISBANK,NSE:BAJAJFINSV,NSE:BAJFINANCE,
-NSE:BALKRISIND,NSE:BANDHANBNK,NSE:BANKBARODA,NSE:BEL,NSE:BERGEPAINT,
-NSE:BHARATFORG,NSE:BHARTIARTL,NSE:BHEL,NSE:BIOCON,NSE:BLUEDART,
-NSE:BPCL,NSE:BRITANNIA,NSE:BSE,NSE:BSOFT,NSE:CANBK,NSE:CDSL,NSE:CEATLTD,
-NSE:CHOLAFIN,NSE:CIPLA,NSE:COALINDIA,NSE:COLPAL,NSE:CONCOR,NSE:CROMPTON,
-NSE:CUMMINSIND,NSE:CYIENT,NSE:DABUR,NSE:DALBHARAT,NSE:DBL,NSE:DCBBANK,
-NSE:DEEPAKNTR,NSE:DELTA CORP,NSE:DIVISLAB,NSE:DIXON,NSE:DLF,NSE:DMART,
-NSE:DRREDDY,NSE:EICHERMOT,NSE:EMAMILTD,NSE:ENDURANCE,NSE:EQUITAS,
-NSE:ERIS,NSE:ESCORTS,NSE:EXIDEIND,NSE:FEDERALBNK,NSE:FINEORG,
-NSE:FORTIS,NSE:GAIL,NSE:GLENMARK,NSE:GMRINFRA,NSE:GODREJCP,
-NSE:GODREJPROP,NSE:GRANULES,NSE:GRAPHITE,NSE:GRASIM
-"""
+@st.cache_data
+def load_symbols():
 
-# convert NSE format to yfinance format
-symbols = [s.replace("NSE:", "").strip() + ".NS" for s in raw_symbols.split(",")]
+    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+
+    df = pd.read_csv(url)
+
+    symbols = [s + ".NS" for s in df["SYMBOL"].tolist()]
+
+    return symbols
+
+
+symbols = load_symbols()
+
+st.write("Total Stocks Loaded:", len(symbols))
 
 # -----------------------
 # NR Pattern Logic
@@ -49,7 +40,7 @@ def get_nr_pattern(df):
 
     last_range = ranges[-1]
 
-    for i in range(4,8):
+    for i in range(4, 8):
 
         if last_range < min(ranges[-i:-1]):
             return f"NR{i}"
@@ -79,14 +70,15 @@ def check_breakout(symbol):
             return None
 
         last_close = float(df["Close"].iloc[-1])
-        prev_high = float(df["High"].iloc[-4:-1].max())
 
-        if last_close > prev_high:
+        three_day_high = float(df["High"].iloc[-4:-1].max())
+
+        if last_close > three_day_high:
 
             return {
                 "Stock": symbol,
                 "Pattern": pattern,
-                "Breakout Above": round(prev_high,2),
+                "Breakout Above": round(three_day_high,2),
                 "Current Price": round(last_close,2),
                 "Signal": "BUY 🚨"
             }
@@ -96,33 +88,45 @@ def check_breakout(symbol):
 
 
 # -----------------------
+# Scanner Function
+# -----------------------
+
+def run_scan(symbols):
+
+    results = []
+
+    progress = st.progress(0)
+    status = st.empty()
+
+    total = len(symbols)
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+
+        futures = {executor.submit(check_breakout, s): s for s in symbols}
+
+        for i, future in enumerate(as_completed(futures)):
+
+            res = future.result()
+
+            if res:
+                results.append(res)
+
+            progress.progress((i+1)/total)
+
+            status.text(f"Scanned {i+1}/{total} stocks")
+
+    return results
+
+
+# -----------------------
 # UI Button
 # -----------------------
 
 if st.button("🚀 Run Full Market Scan"):
 
-    results = []
+    results = run_scan(symbols)
 
-    progress = st.progress(0)
-
-    status = st.empty()
-
-    total = len(symbols)
-
-    for i,symbol in enumerate(symbols):
-
-        status.text(f"Scanning {symbol}")
-
-        res = check_breakout(symbol)
-
-        if res:
-            results.append(res)
-
-        progress.progress((i+1)/total)
-
-        time.sleep(0.1)
-
-    status.text("Scan Complete ✅")
+    st.success("Scan Complete ✅")
 
     if results:
 
