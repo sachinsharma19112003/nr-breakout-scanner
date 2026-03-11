@@ -13,42 +13,6 @@ st.title("📈 NR4 / NR5 / NR6 / NR7 Breakout Scanner")
 
 @st.cache_data
 def load_symbols():
-
-    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
-
-    df = pd.read_csv(url)
-
-    symbols = [s + ".NS" for s in df["SYMBOL"].tolist()]
-
-    return symbols
-
-
-symbols = load_symbols()
-
-st.write("Total Stocks Loaded:", len(symbols))
-
-# -----------------------
-# NR Pattern Logic
-# -----------------------
-
-def get_nr_pattern(df):
-
-    ranges = (df["H…
-[2:01 pm, 11/03/2026] Sachin sharma: import streamlit as st
-import yfinance as yf
-import pandas as pd
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-st.set_page_config(page_title="NR Breakout Scanner", layout="wide")
-
-st.title("📈 NR4 / NR5 / NR6 / NR7 Breakout Scanner")
-
-# ---------------------------------
-# Load ALL NSE Stocks Automatically
-# ---------------------------------
-
-@st.cache_data
-def load_symbols():
     url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
     df = pd.read_csv(url)
     symbols = [s + ".NS" for s in df["SYMBOL"].tolist()]
@@ -106,7 +70,6 @@ def check_breakout(symbol):
         if not pattern:
             return None
 
-        # current price
         ticker = yf.Ticker(symbol)
         info = ticker.info
         last_price = info.get("regularMarketPrice")
@@ -180,4 +143,3 @@ if st.button("🚀 Run Full Market Scan"):
     else:
 
         st.warning("No breakout found today")
-
