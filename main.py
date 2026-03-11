@@ -7,108 +7,151 @@ st.set_page_config(page_title="NR Breakout Scanner", layout="wide")
 
 st.title("📈 NR4 / NR5 / NR6 / NR7 Breakout Scanner")
 
-# ---------------------------------
-# Load ALL NSE Stocks Automatically
-# ---------------------------------
+# ----------------------------------
+# Load NSE Stocks
+# ----------------------------------
 
 @st.cache_data
 def load_symbols():
+
     url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+
     df = pd.read_csv(url)
+
     symbols = [s + ".NS" for s in df["SYMBOL"].tolist()]
+
     return symbols
+
 
 symbols = load_symbols()
 
 st.write("Total Stocks Loaded:", len(symbols))
 
-# -----------------------
+
+# ----------------------------------
 # NR Pattern Logic
-# -----------------------
+# ----------------------------------
 
-def get_nr_pattern(df):
-
-    ranges = (df["High"] - df["Low"]).values.tolist()
-
-    if len(ranges) < 7:
-        return None
+def get_nr_pattern(ranges):
 
     last_range = ranges[-1]
 
-    for i in range(4, 8):
+    for i in range(4,8):
+
         if last_range < min(ranges[-i:-1]):
+
             return f"NR{i}"
 
     return None
 
 
-# -----------------------
-# Breakout Logic
-# -----------------------
+# ----------------------------------
+# TODAY NR BREAKOUT
+# ----------------------------------
 
-def check_breakout(symbol):
+def today_breakout(symbol):
 
     try:
 
-        df = yf.download(
-            symbol,
-            period="10d",
-            interval="1d",
-            auto_adjust=False,
-            threads=False,
-            progress=False
-        )
+        df = yf.download(symbol, period="10d", interval="1d", progress=False)
 
-        if df.empty:
+        if df.empty or len(df) < 7:
             return None
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        ranges = (df["High"] - df["Low"]).tolist()
 
-        pattern = get_nr_pattern(df)
+        pattern = get_nr_pattern(ranges)
 
         if not pattern:
             return None
 
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
-        last_price = info.get("regularMarketPrice")
+        nr_high = float(df["High"].iloc[-1])
 
-        if last_price is None:
-            last_price = float(df["Close"].iloc[-1])
+        price = float(df["Close"].iloc[-1])
 
-        three_day_high = float(df["High"].iloc[-4:-1].max())
-
-        if last_price > three_day_high:
+        if price > nr_high:
 
             return {
                 "Stock": symbol,
                 "Pattern": pattern,
-                "Breakout Above": round(three_day_high, 2),
-                "Current Price": round(last_price, 2),
-                "Signal": "BUY 🚨"
+                "NR High": round(nr_high,2),
+                "Price": round(price,2),
+                "Signal": "Today Breakout 🚀"
             }
 
     except:
         return None
 
 
-# -----------------------
-# Scanner Function
-# -----------------------
+# ----------------------------------
+# FIRST DAY BREAKOUT (Yesterday NR)
+# ----------------------------------
 
-def run_scan(symbols):
+def first_day_breakout(symbol):
+
+    try:
+
+        df = yf.download(symbol, period="10d", interval="1d", progress=False)
+
+        if df.empty or len(df) < 7:
+            return None
+
+        ranges = (df["High"] - df["Low"]).tolist()
+
+        nr_range = ranges[-2]
+
+        pattern = None
+
+        for i in range(4,8):
+
+            if nr_range < min(ranges[-i-1:-2]):
+
+                pattern = f"NR{i}"
+
+        if not pattern:
+            return None
+
+        nr_high = float(df["High"].iloc[-2])
+
+        price = float(df["Close"].iloc[-1])
+
+        if price > nr_high:
+
+            return {
+                "Stock": symbol,
+                "Pattern": pattern,
+                "NR Day High": round(nr_high,2),
+                "Price": round(price,2),
+                "Signal": "First Day Breakout 🔥"
+            }
+
+    except:
+        return None
+
+
+# ----------------------------------
+# SCANNER
+# ----------------------------------
+
+def run_scan(symbols, mode):
 
     results = []
 
     progress = st.progress(0)
+
     status = st.empty()
 
     total = len(symbols)
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=40) as executor:
 
-        futures = {executor.submit(check_breakout, s): s for s in symbols}
+        if mode == "today":
+
+            futures = {executor.submit(today_breakout, s): s for s in symbols}
+
+        else:
+
+            futures = {executor.submit(first_day_breakout, s): s for s in symbols}
 
         for i, future in enumerate(as_completed(futures)):
 
@@ -117,29 +160,48 @@ def run_scan(symbols):
             if res:
                 results.append(res)
 
-            progress.progress((i + 1) / total)
+            progress.progress((i+1)/total)
 
-            status.text(f"Scanned {i+1}/{total} stocks")
+            status.text(f"Scanning {i+1}/{total} stocks")
 
     return results
 
 
-# -----------------------
-# UI Button
-# -----------------------
+# ----------------------------------
+# BUTTONS
+# ----------------------------------
 
-if st.button("🚀 Run Full Market Scan"):
+col1, col2 = st.columns(2)
 
-    results = run_scan(symbols)
+with col1:
 
-    st.success("Scan Complete ✅")
+    if st.button("🚀 Scan Today NR Breakout"):
 
-    if results:
+        results = run_scan(symbols,"today")
 
-        st.success(f"{len(results)} Breakouts Found")
+        st.success("Scan Complete")
 
-        st.dataframe(pd.DataFrame(results), use_container_width=True)
+        if results:
 
-    else:
+            st.dataframe(pd.DataFrame(results), use_container_width=True)
 
-        st.warning("No breakout found today")
+        else:
+
+            st.warning("No breakout found")
+
+
+with col2:
+
+    if st.button("🔥 Scan First Day Breakout"):
+
+        results = run_scan(symbols,"first")
+
+        st.success("Scan Complete")
+
+        if results:
+
+            st.dataframe(pd.DataFrame(results), use_container_width=True)
+
+        else:
+
+            st.warning("No first day breakout found")
