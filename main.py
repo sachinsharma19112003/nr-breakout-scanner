@@ -1,4 +1,4 @@
-[1:57 pm, 11/03/2026] Sachin sharma: import streamlit as st
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -180,3 +180,4 @@ if st.button("🚀 Run Full Market Scan"):
     else:
 
         st.warning("No breakout found today")
+
